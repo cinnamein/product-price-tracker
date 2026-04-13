@@ -2,7 +2,8 @@
 # 크롤링 (GitHub에 올리지 않음)
 # =========================
 local_crawler.py
-backend/app/scraper/
+backend/app/scraper/*
+!backend/app/scraper/service.py
 
 # =========================
 # Node.js / 프론트 관련
@@ -24,6 +25,7 @@ next-env.d.ts
 __pycache__/
 *.pyc
 venv/
+.venv/
 *.db
 price-data/
 
