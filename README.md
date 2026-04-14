@@ -1,6 +1,8 @@
 # 🫒 product-price-tracker
 
-올리브영 제품 URL을 등록하면 가격을 주기적으로 수집하고, 주식 차트 스타일로 가격 변동을 시각화하는 웹 애플리케이션입니다.
+상품 URL을 등록하면 가격을 주기적으로 수집하고, 주식 차트 스타일로 가격 변동을 시각화하는 웹 애플리케이션입니다.
+
+> **Claude Code로 작업하는 경우** — `CLAUDE.md`와 `CONVENTIONS.md`를 함께 읽어주세요. 크롤러 생성·수정 워크플로우, 레이어 규칙, 커밋 컨벤션이 정의되어 있습니다. 크롤러는 AI 하네스 기반으로 자동 생성됩니다 (하단 크롤러 안내 참조).
 
 > ### **⚠️ 꼭 읽어주세요!**
 > * 이 프로젝트는 **개인적으로 공부하고 포트폴리오를 만들기 위해** 제작한 프로젝트입니다. **수익을 내거나 상업적으로 이용할 목적은 전혀 없습니다!**
@@ -80,6 +82,10 @@
 │   │   ├── models/product.py    # SQLAlchemy ORM 모델
 │   │   ├── schemas/product.py   # Pydantic 요청/응답 스키마
 │   │   ├── scraper/             # 크롤러 (gitignore 제외, 하단 안내 참조)
+│   │   │   ├── service.py       # 크롤링 + DB 저장 서비스 (커밋 대상)
+│   │   │   ├── __init__.py      # URL → 크롤러 라우터 (gitignore)
+│   │   │   ├── {사이트명}.py     # 사이트별 크롤러 (gitignore)
+│   │   │   └── url.txt          # 수집 대상 URL 목록 (gitignore)
 │   │   └── scheduler/           # 자동 크롤링 스케줄러
 │   ├── Dockerfile
 │   ├── requirements.txt
@@ -100,44 +106,50 @@
 
 ## ⚠️ 크롤러(Scraper) 관련 안내
 
-본 프로젝트의 크롤링 로직은 무분별한 악용을 방지하기 위해 레포지토리에 포함하지 않았습니다.
-테스트를 원하실 경우, 아래 요구사항에 맞는 크롤러를 직접 구현하여 연동하시기 바랍니다.
+크롤링 로직은 무분별한 악용을 방지하기 위해 레포지토리에 포함하지 않았습니다.
+클론 후 아래 절차에 따라 크롤러를 직접 생성해야 합니다.
 
-### 1. 크롤러 구현 요구사항
+### 1. 초기 세팅
 
-- 대상: 올리브영 상품 상세 페이지 URL
-- 입력: 상품 URL (str)
-- 출력: 아래 형태의 dict 반환
-``` python
+```
+1. backend/app/scraper/url.txt 생성 — 수집할 상품 페이지 URL을 한 줄씩 입력
+2. Claude Code(claude.ai/code)로 프로젝트를 열고 아래 프롬프트 입력:
+   "scraper/url.txt의 URL을 분석해서 {사이트명}.py 크롤러를 생성해줘."
+3. AI가 크롤러 파일과 __init__.py를 자동 생성
+4. docker compose up -d 로 실행
+```
+
+CLAUDE.md에 크롤러 생성 워크플로우와 규칙이 정의되어 있습니다. Claude Code가 이를 읽고 자동으로 따릅니다.
+
+### 2. 멀티 사이트 구조
+
+URL 패턴으로 사이트를 자동 판별해 크롤러를 라우팅합니다.
+
+```python
+# __init__.py
+SCRAPERS = [
+    (oliveyoung_URL_PATTERN, _oliveyoung_scrape),
+    (ably_URL_PATTERN,       _ably_scrape),
+    # 신규 사이트 추가 시 여기에 등록
+]
+```
+
+각 크롤러 함수의 반환 형태:
+```python
 {
     "name": "제품명",
     "brand": "브랜드명",
-    "price": 9970,
-    "original_price": 20000,      # 없으면 None 가능
-    "discount_rate": 50,          # 없으면 None 가능
+    "price": 9970,            # 필수
+    "original_price": 20000,  # 없으면 None
+    "discount_rate": 50,      # 없으면 None
     "image_url": "https://..."
 }
 ```
-- 필수 값: price
-- 구현 방식: playwright 또는 selenium 사용
-- 동적 렌더링 페이지이므로 JS 실행 후 DOM에서 데이터 추출 필요
-
-### 2. 파일 위치 및 함수 규격
-
-아래 경로에 크롤러를 구현해야 합니다.
-> backend/app/scraper/oliveyoung.py
-
-함수 시그니처:
-```python
-def scrape_product_price(url: str) -> dict:
-    ...
-```
-해당 함수는 백엔드 내부에서 직접 import되어 사용됩니다. 함수명 또는 경로가 변경될 경우 정상 동작하지 않습니다.
 
 ### 3. 동작 방식
 
-상품 등록 시 (POST /products)되며, 자동으로 크롤러가 실행됩니다.
-이후 스케줄러 또는 API를 통해 주기적으로 가격을 갱신합니다.
+상품 등록(POST /products) 시 크롤러가 즉시 실행됩니다.
+이후 스케줄러가 주기적으로 가격을 갱신합니다.
 
 ### 4. 주의 사항
 
